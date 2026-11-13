@@ -4,16 +4,19 @@ on:
   push:
   workflow_dispatch:
 
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   build-xl:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -21,16 +24,34 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git wget flex bison gperf python3-venv \
-            ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+            libffi-dev libssl-dev dfu-util libusb-1.0-0
+          sudo apt-get remove -y ccache || true
 
       - name: Install requests
         run: python -m pip install requests
 
       - name: Build XL (release, with bootloader)
-        run: python utils/build.py --preset xl --build-type release --bootloader yes --final --no-store-output
+        run: python utils/build.py --preset xl --build-type release --bootloader yes --final --store-output -DNO_CCACHE:BOOL=ON
+
+      - name: Show build errors
+        if: failure()
+        run: |
+          for f in $(find build -maxdepth 2 -name 'std*.txt'); do
+            echo "================ $f (lines with errors) ================"
+            grep -n -i -E "error|failed|undefined reference" "$f" | head -100 || true
+            echo "================ $f (last 80 lines) ================"
+            tail -n 80 "$f"
+          done
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-logs
+          path: build/*/std*.txt
 
       - name: Upload firmware
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: xl-firmware
           path: build/products/*
