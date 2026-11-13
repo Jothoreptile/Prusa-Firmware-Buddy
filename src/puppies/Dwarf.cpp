@@ -666,7 +666,15 @@ void Dwarf::handle_dwarf_fault(PuppyModbus &bus, dwarf_shared::errors::FaultStat
         }
 
     } else if (fault_int & std::to_underlying(dwarf_shared::errors::FaultStatusMask::TMC_FAULT)) {
-        fatal_error(ErrCode::ERR_SYSTEM_DWARF_TMC, dwarf_number + 1);
+        // CUSTOM: ERR_SYSTEM_DWARF_TMC (XX536 "Extruder motor is not spinning") disabled.
+        // The TMC fault flag is sticky on the Dwarf side, so only log it once per tool
+        // instead of raising the red screen.
+        static uint32_t tmc_fault_logged_mask = 0;
+        const uint32_t bit = (dwarf_number < 32) ? (1u << dwarf_number) : 0u;
+        if (bit && !(tmc_fault_logged_mask & bit)) {
+            tmc_fault_logged_mask |= bit;
+            DWARF_LOG(logging::Severity::warning, "TMC fault on tool %d ignored (XX536 disabled)", dwarf_number + 1);
+        }
     } else {
         fatal_error(ErrCode::ERR_SYSTEM_DWARF_UNKNOWN_ERR, dwarf_number + 1);
     }
